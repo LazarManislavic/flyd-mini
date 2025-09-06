@@ -10,7 +10,7 @@ import (
 )
 
 
-// initDB initializes and returns a new database connection.
+// InitDB initializes and returns a new database connection.
 // It reads the SQL schema from a given file path, creates the necessary
 // directories for the database file, opens a SQLite connection, and
 // applies the schema to the database.
