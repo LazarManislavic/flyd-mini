@@ -14,21 +14,16 @@ type Blob struct {
 }
 
 
-func InsertBlob(ctx context.Context, db *sql.DB, digest string, sizeBytes int64, localPath string, etag string) error  {
-	// upsert necessary due to hostile environment requirement
+func InsertBlob(ctx context.Context, db *sql.DB, digest string, sizeBytes int64, localPath string, etag string) error {
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO blobs (digest, size_bytes, local_path, etag, created_at)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+		INSERT INTO blobs (digest, local_path, size_bytes, etag)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT(digest) DO UPDATE SET
-			size_bytes=excluded.size_bytes,
 			local_path=excluded.local_path,
+			size_bytes=excluded.size_bytes,
 			etag=excluded.etag
-		`, digest, sizeBytes, localPath, etag)
-	if err != nil {
-		return err
-	}
-
-	return nil
+		`, digest, localPath, sizeBytes, etag)
+	return err
 }
 
 
