@@ -18,10 +18,10 @@ type Image struct {
 }
 
 func InsertImage(ctx context.Context, db *sql.DB, name string, digest string, baseLvID *int64, sizeBytes int64, localPath string) (int64, error) {
-    var id int64
+	var id int64
 
-    // Upsert with RETURNING to get the actual row ID
-    err := db.QueryRowContext(ctx, `
+	// Upsert with RETURNING to get the actual row ID
+	err := db.QueryRowContext(ctx, `
         INSERT INTO images (name, digest, base_lv_id, size_bytes, local_path, created_at)
         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(digest) DO UPDATE SET
@@ -31,11 +31,11 @@ func InsertImage(ctx context.Context, db *sql.DB, name string, digest string, ba
             local_path=excluded.local_path
         RETURNING id
     `, name, digest, baseLvID, sizeBytes, localPath).Scan(&id)
-    if err != nil {
-        return 0, err
-    }
+	if err != nil {
+		return 0, err
+	}
 
-    return id, nil
+	return id, nil
 }
 
 func GetImageByKey(ctx context.Context, db *sql.DB, s3Key string) (*Image, error) {
@@ -68,6 +68,7 @@ func GetImageByID(ctx context.Context, db *sql.DB, imageID int64) (*Image, error
 		}
 		return nil, err
 	}
+	fmt.Printf("%+v\n", img)
 
 	return &img, nil
 }

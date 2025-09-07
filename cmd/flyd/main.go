@@ -65,8 +65,8 @@ func main() {
 
 	builder := fsm.Register[machine.FSMRequest, machine.FSMResponse](manager, "tasks").
 		Start("fetch", machine.WithApp(appCtx, machine.FetchObject)).
-		// To("unpack", machine.WithApp(appCtx, machine.UnpackLayers)).
-		// To("register", machine.WithApp(appCtx, machine.RegisterImage)).
+		To("unpack", machine.WithApp(appCtx, machine.UnpackLayers)).
+		To("register", machine.WithApp(appCtx, machine.RegisterImage)).
 		End("done")
 
 	// Transitions
