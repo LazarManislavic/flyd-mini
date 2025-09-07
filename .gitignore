@@ -2,3 +2,4 @@
 rootfs/
 blobs/
 pool_*
+db/
