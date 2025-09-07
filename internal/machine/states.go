@@ -96,7 +96,7 @@ func FetchObject(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse],
 
 	// Insert image row referencing last blob
 	imageRowID, err := storage.InsertImage(ctx, app.DB,
-		req.Msg.ImageName, &lastDigest, nil, 0, lastPath)
+		req.Msg.ImageName, lastDigest, nil, 0, lastPath)
 	if err != nil {
 		logrus.Errorf("Failed to upsert image row: %v", err)
 		return nil, fmt.Errorf("failed to upsert image row: %w", err)

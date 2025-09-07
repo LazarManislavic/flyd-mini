@@ -17,9 +17,11 @@ type Image struct {
 	CreatedAt string
 }
 
-func InsertImage(ctx context.Context, db *sql.DB, name string, digest *string, baseLvID *int64, sizeBytes int64, localPath string) (int64, error) {
-	// upsert to avoid duplicate digest
-	res, err := db.ExecContext(ctx, `
+func InsertImage(ctx context.Context, db *sql.DB, name string, digest string, baseLvID *int64, sizeBytes int64, localPath string) (int64, error) {
+    var id int64
+
+    // Upsert with RETURNING to get the actual row ID
+    err := db.QueryRowContext(ctx, `
         INSERT INTO images (name, digest, base_lv_id, size_bytes, local_path, created_at)
         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(digest) DO UPDATE SET
@@ -27,13 +29,13 @@ func InsertImage(ctx context.Context, db *sql.DB, name string, digest *string, b
             base_lv_id=excluded.base_lv_id,
             size_bytes=excluded.size_bytes,
             local_path=excluded.local_path
-    `, name, digest, baseLvID, sizeBytes, localPath)
-	if err != nil {
-		return 0, err
-	}
-	fmt.Printf("%+v\n", err)
+        RETURNING id
+    `, name, digest, baseLvID, sizeBytes, localPath).Scan(&id)
+    if err != nil {
+        return 0, err
+    }
 
-	return res.LastInsertId()
+    return id, nil
 }
 
 func GetImageByKey(ctx context.Context, db *sql.DB, s3Key string) (*Image, error) {
