@@ -65,8 +65,8 @@ func main() {
 
 	builder := fsm.Register[machine.FSMRequest, machine.FSMResponse](manager, "tasks").
 		Start("fetch", machine.WithApp(appCtx, machine.FetchObject)).
-		To("unpack", machine.WithApp(appCtx, machine.UnpackLayers)).
-		To("register", machine.WithApp(appCtx, machine.RegisterImage)).
+		// To("unpack", machine.WithApp(appCtx, machine.UnpackLayers)).
+		// To("register", machine.WithApp(appCtx, machine.RegisterImage)).
 		End("done")
 
 	// Transitions
@@ -77,7 +77,7 @@ func main() {
 
 	req := fsm.NewRequest(
 		&machine.FSMRequest{
-			ImageName: "golang", // logical blob family
+			ImageName:  "golang", // logical blob family
 			BucketName: AWS_BUCKET_NAME,
 		},
 		&machine.FSMResponse{},
@@ -85,9 +85,8 @@ func main() {
 
 	runID, err := startFn(ctx, "unique-run-4", req)
 	if err != nil {
-		logrus.Fatalf("fatal error: %v", err)	
+		logrus.Fatalf("fatal error: %v", err)
 	}
-
 
 	fmt.Println(runID)
 

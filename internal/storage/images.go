@@ -3,12 +3,13 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"fmt"
 )
 
 // A row in the `images` table
 type Image struct {
 	ID        int64
-	Name     string
+	Name      string
 	Digest    sql.NullString
 	BaseLvID  sql.NullInt64
 	SizeBytes sql.NullInt64
@@ -17,8 +18,8 @@ type Image struct {
 }
 
 func InsertImage(ctx context.Context, db *sql.DB, name string, digest *string, baseLvID *int64, sizeBytes int64, localPath string) (int64, error) {
-    // upsert to avoid duplicate digest
-    res, err := db.ExecContext(ctx, `
+	// upsert to avoid duplicate digest
+	res, err := db.ExecContext(ctx, `
         INSERT INTO images (name, digest, base_lv_id, size_bytes, local_path, created_at)
         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(digest) DO UPDATE SET
@@ -27,11 +28,12 @@ func InsertImage(ctx context.Context, db *sql.DB, name string, digest *string, b
             size_bytes=excluded.size_bytes,
             local_path=excluded.local_path
     `, name, digest, baseLvID, sizeBytes, localPath)
-    if err != nil {
-        return 0, err
-    }
+	if err != nil {
+		return 0, err
+	}
+	fmt.Printf("%+v\n", err)
 
-    return res.LastInsertId()
+	return res.LastInsertId()
 }
 
 func GetImageByKey(ctx context.Context, db *sql.DB, s3Key string) (*Image, error) {
@@ -43,10 +45,9 @@ func GetImageByKey(ctx context.Context, db *sql.DB, s3Key string) (*Image, error
 	if err := row.Scan(&img.ID, &img.Name, &img.Digest, &img.BaseLvID, &img.SizeBytes, &img.LocalPath, &img.CreatedAt); err != nil {
 		return nil, err
 	}
-	
+
 	return &img, nil
 }
-
 
 // GetImageByID retrieves an image row by its ID.
 // Returns nil if no image exists with the given ID.
@@ -92,6 +93,7 @@ func GetImageByBaseLvID(ctx context.Context, db *sql.DB, baseLvID int64) (*Image
 
 // UpdateBaseLvID sets the base_lv_id for an image given its ID
 func UpdateBaseLvID(ctx context.Context, db *sql.DB, imageID int64, baseLvID int64) error {
+	fmt.Println("Base Level ID: ", baseLvID)
 	_, err := db.ExecContext(ctx,
 		`UPDATE images SET base_lv_id = ? WHERE id = ?`,
 		baseLvID, imageID,

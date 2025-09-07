@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS images (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
-    digest TEXT NOT NULL,                  -- digest of the original tarball
+    digest TEXT NOT NULL UNIQUE,                  -- digest of the original tarball
     base_lv_id INTEGER,           -- thin volume id for base
     size_bytes INTEGER,
     local_path TEXT,         
