@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -62,11 +63,37 @@ func main() {
 
 	logrus.Info("AppContext initialized")
 
-	builder := fsm.Register[machine.FSMRequest, machine.FSMResponse](manager, "tasks")
+	builder := fsm.Register[machine.FSMRequest, machine.FSMResponse](manager, "tasks").
+		Start("fetch", machine.WithApp(appCtx, machine.FetchObject)).
+		To("test_transition", machine.WithApp(appCtx, machine.UnpackLayers)).
+		End("done")
 
 	// Transitions
-	builder.Start("fetch", machine.WithApp(appCtx, machine.FetchObject))
+	startFn, _, err := builder.Build(ctx)
+	if err != nil {
+		logrus.Fatalf("fatal error: %v", err)
+	}
 
-	logrus.Info("flyd closing...")
-	os.Exit(0)
+	req := fsm.NewRequest(
+		&machine.FSMRequest{
+			ImageName: "golang", // logical blob family
+			BucketName: AWS_BUCKET_NAME,
+		},
+		&machine.FSMResponse{},
+	)
+
+	runID, err := startFn(ctx, "unique-run-4", req)
+	if err != nil {
+		logrus.Fatalf("fatal error: %v", err)	
+	}
+
+
+	fmt.Println(runID)
+
+	// logrus.Info("flyd closing...")
+	// os.Exit(0)
+
+	// Block until signal
+	<-ctx.Done()
+	logrus.Info("shutting down gracefully…")
 }

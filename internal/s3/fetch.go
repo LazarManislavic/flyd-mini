@@ -7,7 +7,36 @@ import (
 	"hash"
 	"io"
 	"os"
+	"strings"
 )
+
+// --- XML structures for S3 bucket listings ---
+type ListBucketResult struct {
+	Contents []S3Object `xml:"Contents"`
+}
+
+type S3Object struct {
+	Key  string `xml:"Key"`
+	Size int64  `xml:"Size"`
+	ETag string `xml:"ETag"`
+}
+
+
+// ComputeFileDigest computes the SHA256 digest of a file and returns it as a hex string.
+func ComputeFileDigest(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file %s: %w", path, err)
+	}
+	defer file.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, file); err != nil {
+		return "", fmt.Errorf("failed to hash file %s: %w", path, err)
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
 
 // FetchAndHash retrieves an object from an S3 bucket, saves it to a local file,
 // and computes its SHA256 hash.
@@ -41,4 +70,34 @@ func FetchAndHash(ctx context.Context, client *S3Client, key, destPath string) (
 
 	// Return hash as hex string
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// FetchImageLayers parses an XML listing and pulls the layers for a specific family (golang/python/node).
+// It checks the DB for existing etags to avoid re-downloading.
+func FetchImageLayers(ctx context.Context, client *S3Client, family string, listing ListBucketResult, destDir string, seenETags map[string]bool) ([]string, error) {
+	var pulled []string
+
+	for _, obj := range listing.Contents {
+		// only consider objects belonging to the family (images/golang/, images/node/, etc.)
+		if !strings.HasPrefix(obj.Key, "images/"+family+"/") {
+			continue
+		}
+
+		// skip if already pulled by ETag
+		if seenETags[obj.ETag] {
+			continue
+		}
+
+		destPath := fmt.Sprintf("%s/%s", destDir, strings.ReplaceAll(obj.Key, "/", "_"))
+		_, err := FetchAndHash(ctx, client, obj.Key, destPath)
+		if err != nil {
+			return pulled, err
+		}
+
+		// mark this ETag as seen
+		seenETags[obj.ETag] = true
+		pulled = append(pulled, destPath)
+	}
+
+	return pulled, nil
 }

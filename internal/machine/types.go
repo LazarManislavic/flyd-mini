@@ -2,7 +2,8 @@ package machine
 
 type FSMRequest struct {
 	Key       string // S3 key for image tarball
-	ImageName string // logical name to register in DB
+	BucketName string
+	ImageName string
 }
 
 type FSMResponse struct {

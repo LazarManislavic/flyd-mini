@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS blobs (
     digest TEXT PRIMARY KEY,
     local_path TEXT NOT NULL,
     size_bytes INTEGER NOT NULL,
-    etag TEXT                       -- for validation
+    etag TEXT NOT NULL UNIQUE,                      -- for validation
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
