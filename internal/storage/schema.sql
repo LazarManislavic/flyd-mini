@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS images (
     digest TEXT,                  -- digest of the original tarball
     base_lv_id INTEGER,           -- thin volume id for base
     size_bytes INTEGER,
+    local_path TEXT         
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

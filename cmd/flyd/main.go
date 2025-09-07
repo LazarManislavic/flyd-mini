@@ -24,7 +24,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	_, err := fsm.New(
+	manager, err := fsm.New(
 		fsm.Config{
 			Logger: logrus.New(),                  // logging transitions/errors
 			DBPath: "./db",                        // internal persistence
@@ -60,8 +60,12 @@ func main() {
 		S3: s3Client,
 	}
 
-	logrus.Info("AppContext initialized:", appCtx)
+	logrus.Info("AppContext initialized")
 
+	builder := fsm.Register[machine.FSMRequest, machine.FSMResponse](manager, "tasks")
+
+	// Transitions
+	builder.Start("fetch", machine.WithApp(appCtx, machine.FetchObject))
 
 	logrus.Info("flyd closing...")
 	os.Exit(0)

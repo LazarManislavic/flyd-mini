@@ -15,6 +15,7 @@ import (
 // directories for the database file, opens a SQLite connection, and
 // applies the schema to the database.
 func InitDB(scehmaPath, dbPath string) (*sql.DB, error) {
+	// TODO: Ignore initialization if the database file already exists
 	schemaBytes, err := os.ReadFile(scehmaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read schema file: %w", err)
