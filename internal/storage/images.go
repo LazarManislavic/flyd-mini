@@ -17,16 +17,21 @@ type Image struct {
 }
 
 func InsertImage(ctx context.Context, db *sql.DB, name string, digest *string, baseLvID *int64, sizeBytes int64, localPath string) (int64, error) {
-	// upsert
-	res, err := db.ExecContext(ctx, `
-		INSERT INTO images (name, digest, base_lv_id, size_bytes, local_path, created_at)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		`,  name, digest, baseLvID, sizeBytes, localPath)
-	if err != nil {
-		return 0, err
-	}
+    // upsert to avoid duplicate digest
+    res, err := db.ExecContext(ctx, `
+        INSERT INTO images (name, digest, base_lv_id, size_bytes, local_path, created_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(digest) DO UPDATE SET
+            name=excluded.name,
+            base_lv_id=excluded.base_lv_id,
+            size_bytes=excluded.size_bytes,
+            local_path=excluded.local_path
+    `, name, digest, baseLvID, sizeBytes, localPath)
+    if err != nil {
+        return 0, err
+    }
 
-	return res.LastInsertId()
+    return res.LastInsertId()
 }
 
 func GetImageByKey(ctx context.Context, db *sql.DB, s3Key string) (*Image, error) {
