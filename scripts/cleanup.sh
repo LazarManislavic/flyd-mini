@@ -33,15 +33,15 @@ if [ -e /dev/mapper/pool ]; then
     sudo dmsetup remove pool || echo "Failed to remove pool, check for active thin LVs"
 fi
 
-# 4. Detach loop devices for pool_meta and pool_data
-for file in pool_meta pool_data; do
-    LOOP_DEVS=$(losetup -j "$file" | cut -d: -f1)
-    for loop in $LOOP_DEVS; do
-        if [ -n "$loop" ]; then
-            echo "Detaching loop device $loop for $file..."
-            sudo losetup -d "$loop" || echo "Failed to detach $loop"
-        fi
-    done
+# 4. Detach all loop devices associated with pool_meta and pool_data
+echo "Detaching all loop devices associated with pool_meta and pool_data..."
+# Collect all loop devices related to pool_meta/pool_data, sort numerically descending
+LOOPS=$(losetup -l | awk '/pool_meta|pool_data/ {print $1}' | sort -Vr)
+for loop in $LOOPS; do
+    if [ -n "$loop" ]; then
+        echo "Detaching $loop..."
+        sudo losetup -d "$loop" || echo "Failed to detach $loop"
+    fi
 done
 
 # 5. Remove backing files
@@ -58,5 +58,4 @@ if [ -d "$MOUNT_POINT" ] && [ -z "$(ls -A "$MOUNT_POINT")" ]; then
     rmdir "$MOUNT_POINT"
 fi
 
-echo "Thinpool cleanup completed successfully."
-
+echo "Thinpool and loop device cleanup completed successfully."
