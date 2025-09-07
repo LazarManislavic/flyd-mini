@@ -26,7 +26,6 @@ func InsertImage(ctx context.Context, db *sql.DB, name string, digest string, ba
         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(digest) DO UPDATE SET
             name=excluded.name,
-            base_lv_id=excluded.base_lv_id,
             size_bytes=excluded.size_bytes,
             local_path=excluded.local_path
         RETURNING id
