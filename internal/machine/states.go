@@ -5,12 +5,13 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
-	"path/filepath"
-	"time"
-	"math/rand"
 	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/manuelinfosec/flyd/internal"
 	"github.com/manuelinfosec/flyd/internal/s3"
@@ -192,16 +193,20 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 	}
 
 	// 3. Attach loop devices
-	metaLoop, err := exec.Command("losetup", "-f", "--show", poolMetaFile).Output()
+	metaLoopBytes, err := exec.Command("losetup", "-f", "--show", poolMetaFile).Output()
 	if err != nil {
 		logrus.Errorf("Failed to attach pool_meta: %v", err)
 		return nil, fmt.Errorf("failed to attach pool_meta: %w", err)
 	}
-	dataLoop, err := exec.Command("losetup", "-f", "--show", poolDataFile).Output()
+	metaLoop := strings.TrimSpace(string(metaLoopBytes))
+
+	dataLoopBytes, err := exec.Command("losetup", "-f", "--show", poolDataFile).Output()
 	if err != nil {
 		logrus.Errorf("Failed to attach pool_data: %v", err)
 		return nil, fmt.Errorf("failed to attach pool_data: %w", err)
 	}
+	dataLoop := strings.TrimSpace(string(dataLoopBytes))
+
 	logrus.Infof("Attached loop devices: meta=%s, data=%s", string(metaLoop), string(dataLoop))
 
 	// 4. Create thinpool if it doesn't exist
