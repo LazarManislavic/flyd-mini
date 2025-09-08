@@ -307,65 +307,91 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 func ActivateSnapshot(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse], app *AppContext) (*fsm.Response[FSMResponse], error) {
 	const poolDevice = "/dev/mapper/pool"
 
+	logrus.Infof("Starting ActivateSnapshot for image ID %d", req.W.Msg.ImageID)
+
 	// 1. Lookup image row to get base_lv_id
+	logrus.Infof("Looking up image %d in DB...", req.W.Msg.ImageID)
 	img, err := storage.GetImageByID(ctx, app.DB, req.W.Msg.ImageID)
 	if err != nil {
+		logrus.Errorf("DB lookup failed: %v", err)
 		return nil, fmt.Errorf("failed to lookup image: %w", err)
 	}
 	if img == nil || !img.BaseLvID.Valid {
+		logrus.Errorf("Image %d has no base_lv_id", req.W.Msg.ImageID)
 		return nil, fmt.Errorf("image %d has no base_lv_id", req.W.Msg.ImageID)
 	}
 	baseLvID := img.BaseLvID.Int64
+	logrus.Infof("Found base_lv_id=%d for image %d", baseLvID, req.W.Msg.ImageID)
 
 	// 2. Generate snapshot ID (random, validated against DB)
 	rand.Seed(time.Now().UnixNano())
 	var snapLvID int64
 	for {
 		snapLvID = int64(rand.Intn(1_000_000) + 1)
+		logrus.Infof("Generated candidate snap_lv_id=%d", snapLvID)
 		existing, err := storage.GetActivationBySnapLvID(ctx, app.DB, snapLvID)
 		if err != nil {
+			logrus.Errorf("DB check for snap_lv_id %d failed: %v", snapLvID, err)
 			return nil, fmt.Errorf("failed to check snap_lv_id in DB: %w", err)
 		}
 		if existing == nil {
+			logrus.Infof("snap_lv_id=%d is available", snapLvID)
 			break
 		}
+		logrus.Warnf("snap_lv_id=%d already exists in DB, retrying...", snapLvID)
 	}
 
 	// 3. Create snapshot volume via dmsetup
-	if err := exec.Command("dmsetup", "message", poolDevice, "0", fmt.Sprintf("create_snap %d %d", snapLvID, baseLvID)).Run(); err != nil {
+	logrus.Infof("Creating snapshot in thinpool: base_lv_id=%d snap_lv_id=%d", baseLvID, snapLvID)
+	if err := exec.Command("dmsetup", "message", poolDevice, "0",
+		fmt.Sprintf("create_snap %d %d", snapLvID, baseLvID)).Run(); err != nil {
+		logrus.Errorf("dmsetup create_snap failed: %v", err)
 		return nil, fmt.Errorf("failed to create snapshot: %w", err)
 	}
 
 	snapName := fmt.Sprintf("snap_lv_%d", snapLvID)
 	snapDevice := fmt.Sprintf("/dev/mapper/%s", snapName)
+	logrus.Infof("Mapping snapshot device: name=%s path=%s", snapName, snapDevice)
 
 	if err := exec.Command("dmsetup", "create", snapName,
 		"--table", fmt.Sprintf("0 4194304 thin %s %d", poolDevice, snapLvID),
 	).Run(); err != nil {
+		logrus.Errorf("dmsetup create failed for %s: %v", snapName, err)
 		return nil, fmt.Errorf("failed to map snapshot device: %w", err)
 	}
 
 	// 4. Mount snapshot
 	mountPath := fmt.Sprintf("/mnt/images/%d", snapLvID)
+	logrus.Infof("Creating mount point %s", mountPath)
 	if err := os.MkdirAll(mountPath, 0755); err != nil {
+		logrus.Errorf("Failed to create mount point %s: %v", mountPath, err)
 		return nil, fmt.Errorf("failed to create mount point: %w", err)
 	}
+	logrus.Infof("Mounting snapshot device %s at %s", snapDevice, mountPath)
 	if err := exec.Command("mount", snapDevice, mountPath).Run(); err != nil {
+		logrus.Errorf("Failed to mount snapshot device %s: %v", snapDevice, err)
 		return nil, fmt.Errorf("failed to mount snapshot: %w", err)
 	}
 
 	// 5. Insert into activations table
+	logrus.Infof("Inserting activation row: image_id=%d snap_lv_id=%d mount_path=%s",
+		req.W.Msg.ImageID, snapLvID, mountPath)
 	actID, err := storage.InsertActivation(ctx, app.DB, req.W.Msg.ImageID, snapLvID, mountPath)
 	if err != nil {
+		logrus.Errorf("Failed to insert activation row: %v", err)
 		_ = exec.Command("umount", mountPath).Run()
 		return nil, fmt.Errorf("failed to insert activation row: %w", err)
 	}
+	logrus.Infof("Activation row inserted with ID %d", actID)
+
+	logrus.Infof("ActivateSnapshot complete: image_id=%d snap_lv_id=%d device=%s mounted_at=%s",
+		req.W.Msg.ImageID, snapLvID, snapDevice, mountPath)
 
 	return &fsm.Response[FSMResponse]{
 		Msg: &FSMResponse{
-			BaseDir:   mountPath,
-			ImageID:   req.W.Msg.ImageID,
-			LocalPath: snapDevice,
+			BaseDir:     mountPath,
+			ImageID:     req.W.Msg.ImageID,
+			LocalPath:   snapDevice,
 			SnapshotRef: actID,
 		},
 	}, nil

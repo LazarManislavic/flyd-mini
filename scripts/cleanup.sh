@@ -5,7 +5,7 @@ echo "Starting Flyd thinpool cleanup..."
 
 MOUNT_POINT="/mnt/base_lv"
 
-# 1. Unmount any mounted thin volumes
+# 1. Unmount any mounted thin volumes under /mnt/base_lv
 if mountpoint -q "$MOUNT_POINT"; then
     echo "Unmounting $MOUNT_POINT..."
     sudo umount "$MOUNT_POINT"
@@ -13,10 +13,16 @@ else
     echo "$MOUNT_POINT not mounted, skipping."
 fi
 
-# Also check for any other mounts under /mnt/base_lv*
+# 1a. Also check for any other mounts under /mnt/base_lv*
 for mp in $(mount | grep '/dev/mapper/base_lv_' | awk '{print $3}'); do
     echo "Unmounting additional mount point $mp..."
     sudo umount "$mp"
+done
+
+# 1b. Unmount all mounts under /mnt/images/*
+for mp in $(mount | awk '$3 ~ /^\/mnt\/images\// {print $3}'); do
+    echo "Unmounting snapshot mount $mp..."
+    sudo umount "$mp" || echo "Failed to unmount $mp"
 done
 
 # 2. Remove snapshot devices explicitly
