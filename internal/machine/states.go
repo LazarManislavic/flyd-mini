@@ -21,11 +21,16 @@ import (
 )
 
 // FetchObject:
-//   - Check if image exists locally
-//   - Read images by name
-//   - If it exists -> skip download
-//   - If not -> fetch + hash
-//   - Write to blobs & images table
+//   - Acquire a lock to avoid race conditions when multiple processes fetch the same image.
+//   - Check if the image already exists locally in the `images` table.
+//   - If it exists and is marked complete -> skip fetching from S3.
+//   - If it exists but incomplete -> continue fetching missing blobs.
+//   - Download and hash any missing blobs from S3 (based on ETags).
+//   - Insert blobs into the `blobs` table (with a completion flag).
+//   - Link blobs to the image via `image_blobs` table.
+//   - Insert or update the `images` table entry.
+//   - Update the image completion flag depending on whether all blobs are present.
+//   - Return the image ID, base directory, and blob path for downstream transitions.
 func FetchObject(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse], app *AppContext) (*fsm.Response[FSMResponse], error) {
 	destDir := "blobs"
 	logrus.Infof("Starting FetchObject for image family: %s", req.Msg.ImageName)
@@ -44,6 +49,11 @@ func FetchObject(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse],
 		return nil, fmt.Errorf("lock contention for %s", req.Msg.ImageName)
 	}
 	defer func() {
+		// A different context to release lock because the global context is usually 
+		// canclled during shutdown before some locks are released.
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
 		// Always release lock
 		if err := storage.ReleaseLock(ctx, app.DB, lockKey, lockVal); err != nil {
 			logrus.Warnf("Failed to release lock %s: %v", lockKey, err)
@@ -52,89 +62,112 @@ func FetchObject(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse],
 		}
 	}()
 
-	// Step 1: Get XML listing
+	// Create the `blobs/` directory if it doesn't exist
+	if err := storage.EnsureDir("blobs"); err != nil {
+		logrus.Fatalf("Failed to ensure blobs directory: %v", err)
+	}
+
+	// Get XML listing
 	url := fmt.Sprintf("https://%s.s3.us-east-1.amazonaws.com/", req.Msg.BucketName)
 	reqHTTP, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		logrus.Errorf("Failed to create HTTP request: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 	resp, err := http.DefaultClient.Do(reqHTTP)
 	if err != nil {
-		logrus.Errorf("Failed to fetch bucket listing: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch bucket listing: %w", err)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logrus.Errorf("Failed to read bucket listing: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to read bucket listing: %w", err)
 	}
 
 	var listing s3.ListBucketResult
 	if err := xml.Unmarshal(data, &listing); err != nil {
-		logrus.Errorf("Failed to parse XML listing: %v", err)
 		return nil, fmt.Errorf("xml parse failed: %w", err)
 	}
 
 	logrus.Infof("Fetched XML listing, processing layers for image: %s", req.Msg.ImageName)
 
-	// Step 2: Fetch layers for the requested family
-	seenETags := make(map[string]bool)
+	// Fetch layers for the requested family but skip if blob already exists
+	seenETags, err := storage.GetAllETags(ctx, app.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load seen etags: %w", err)
+	}
 	paths, err := s3.FetchImageLayers(ctx, app.S3, req.Msg.ImageName, listing, destDir, seenETags)
 	if err != nil {
-		logrus.Errorf("Failed to fetch image layers: %v", err)
 		return nil, fmt.Errorf("fetch image layers failed: %w", err)
 	}
-	logrus.Infof("Fetched %d layers for image family %s", len(paths), req.Msg.ImageName)
+	logrus.Infof("Fetched %d layers (new or existing) for image family %s", len(paths), req.Msg.ImageName)
 
-	// Step 3: Save each blob into DB
+	// Save blobs into DB and link to image
 	var lastDigest string
 	var lastPath string
 
 	for _, p := range paths {
 		stat, err := os.Stat(p[0])
 		if err != nil {
-			logrus.Errorf("Failed to stat %s: %v", p[0], err)
-			return nil, fmt.Errorf("failed to stat %s: %w", p[0], err)
+			// If the file doesn't exist locally, still link blob digest to image, mark incomplete
+			logrus.Warnf("Blob file missing for %s, will mark as incomplete", p[1])
+			blobDigest := p[1]
+			_ = storage.InsertBlob(ctx, app.DB, blobDigest, 0, "", p[1], false)
+			continue
 		}
 		size := stat.Size()
 
 		digest, err := s3.ComputeFileDigest(p[0])
 		if err != nil {
-			logrus.Errorf("Failed to compute digest for %s: %v", p[0], err)
-			return nil, err
+			return nil, fmt.Errorf("failed to compute digest for %s: %w", p[0], err)
 		}
 
-		if err := storage.InsertBlob(ctx, app.DB, digest, size, p[0], p[1]); err != nil {
-			logrus.Errorf("Failed to insert blob %s: %v", p[0], err)
+		if err := storage.InsertBlob(ctx, app.DB, digest, size, p[0], p[1], true); err != nil {
 			return nil, fmt.Errorf("failed to insert blob: %w", err)
 		}
 
-		logrus.Infof("Inserted blob %s into database", p[0])
 		lastDigest = digest
 		lastPath = p[0]
 	}
 
-	// Insert image row referencing last blob
+	// Insert or update image row
 	imageRowID, err := storage.InsertImage(ctx, app.DB,
 		req.Msg.ImageName, lastDigest, nil, 0, lastPath)
 	if err != nil {
-		logrus.Errorf("Failed to upsert image row: %v", err)
 		return nil, fmt.Errorf("failed to upsert image row: %w", err)
 	}
-	logrus.Infof("Inserted/updated image row %d for %s", imageRowID, req.Msg.ImageName)
+
+	// Link blobs to the image
+	for _, p := range paths {
+		blobDigest := p[1]
+		if err := storage.InsertImageBlob(ctx, app.DB, imageRowID, blobDigest); err != nil {
+			return nil, fmt.Errorf("failed to insert image->blob mapping: %w", err)
+		}
+	}
+
+	// Update image completion flag
+	if err := storage.UpdateImageCompletion(ctx, app.DB, imageRowID); err != nil {
+		return nil, fmt.Errorf("failed to update image completion: %w", err)
+	}
+
+	logrus.Infof("Inserted/updated image row %d for %s (completion updated)", imageRowID, req.Msg.ImageName)
 
 	return &fsm.Response[FSMResponse]{
 		Msg: &FSMResponse{
-			BaseDir:   "rootfs/",
-			ImageID:   imageRowID,
-			LocalPath: "blobs/",
+			BaseDir:     "rootfs/",
+			ImageID:     imageRowID,
+			LocalPath:   "blobs/",
+			SnapshotRef: 0,
 		},
 	}, nil
 }
 
-// UnpackLayers unpacks all tarballs in LocalPath dir into BaseDir
+// UnpackLayers:
+//   - Ensure the destination directory (`BaseDir`) exists.
+//   - Iterate through tarball layers belonging to the image in `LocalPath`.
+//   - For each layer, unpack it into the canonical filesystem layout under `BaseDir`.
+//   - Preserve file attributes and merge layers in the correct order.
+//   - Return an FSM response with updated `BaseDir`, `ImageID`, and `LocalPath`
+//     for downstream transitions (e.g., RegisterImage).
 func UnpackLayers(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse], app *AppContext) (*fsm.Response[FSMResponse], error) {
 	srcDir := req.W.Msg.LocalPath
 	destDir := req.W.Msg.BaseDir
@@ -170,6 +203,17 @@ func UnpackLayers(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse]
 	}, nil
 }
 
+// RegisterImage:
+//   - Check if the image already has an associated base logical volume (`base_lv_id`).
+//     If yes, skip re-registration and return existing device info.
+//   - If not, prepare and initialize the device-mapper thinpool if necessary.
+//   - Allocate a new thin logical volume ID and ensure it is unique in the database.
+//   - Create, format, and mount the thin volume as a base filesystem.
+//   - Copy the fully unpacked rootfs from `BaseDir` into the mounted thin volume.
+//   - Unmount the volume after the copy completes.
+//   - Persist the generated `base_lv_id` back to the `images` table.
+//   - Return an FSM response with the thin device path and updated metadata
+//     for downstream transitions (e.g., ActivateSnapshot).
 func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse], app *AppContext) (*fsm.Response[FSMResponse], error) {
 	const (
 		poolMetaFile = "pool_meta"
@@ -193,6 +237,9 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 		return nil, fmt.Errorf("lock contention for %s", req.Msg.ImageName)
 	}
 	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
 		// Always release lock
 		if err := storage.ReleaseLock(ctx, app.DB, lockKey, lockVal); err != nil {
 			logrus.Warnf("Failed to release lock %s: %v", lockKey, err)
@@ -201,7 +248,7 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 		}
 	}()
 
-	// 1. Check if image already has a base_lv_id
+	// Check if image already has a base_lv_id
 	existingImage, err := storage.GetImageByID(ctx, app.DB, req.W.Msg.ImageID)
 	if err != nil {
 		logrus.Errorf("Failed to check existing image: %v", err)
@@ -218,7 +265,7 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 		}, nil
 	}
 
-	// 2. Prepare backing files if they don't exist
+	// Prepare backing files if they don't exist
 	logrus.Infof("Preparing thinpool backing files")
 	if _, err := os.Stat(poolMetaFile); os.IsNotExist(err) {
 		logrus.Infof("Creating %s", poolMetaFile)
@@ -235,7 +282,7 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 		}
 	}
 
-	// 3. Attach loop devices
+	// Attach loop devices
 	metaLoopBytes, err := exec.Command("losetup", "-f", "--show", poolMetaFile).Output()
 	if err != nil {
 		logrus.Errorf("Failed to attach pool_meta: %v", err)
@@ -252,7 +299,7 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 
 	logrus.Infof("Attached loop devices: meta=%s, data=%s", string(metaLoop), string(dataLoop))
 
-	// 4. Create thinpool if it doesn't exist
+	// Create thinpool if it doesn't exist
 	if _, err := os.Stat(poolDevice); os.IsNotExist(err) {
 		logrus.Infof("Creating thinpool %s", poolDevice)
 		args := []string{
@@ -265,7 +312,7 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 		}
 	}
 
-	// 5. Generate a random base LV ID and validate against DB
+	// Generate a random base LV ID and validate against DB
 	logrus.Infof("Generating random base LV ID")
 	rand.Seed(time.Now().UnixNano())
 	var baseLvID int64
@@ -282,7 +329,7 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 	}
 	logrus.Infof("Selected base_lv_id=%d", baseLvID)
 
-	// 6. Create the thin volume
+	// Create the thin volume
 	logrus.Infof("Creating thin volume with ID %d", baseLvID)
 	if err := exec.Command("dmsetup", "message", poolDevice, "0", fmt.Sprintf("create_thin %d", baseLvID)).Run(); err != nil {
 		logrus.Errorf("Failed to create thin volume: %v", err)
@@ -297,14 +344,14 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 		return nil, fmt.Errorf("failed to create device-mapper LV: %w", err)
 	}
 
-	// 7. Format the thin volume
+	// Format the thin volume
 	logrus.Infof("Formatting thin volume %s", thinDevice)
 	if err := exec.Command("mkfs.ext4", thinDevice).Run(); err != nil {
 		logrus.Errorf("Failed to format thin volume: %v", err)
 		return nil, fmt.Errorf("failed to format base LV: %w", err)
 	}
 
-	// 8. Mount and copy rootfs
+	// Mount and copy rootfs
 	logrus.Infof("Mounting thin volume %s to %s", thinDevice, mountRoot)
 	if err := os.MkdirAll(mountRoot, 0755); err != nil {
 		logrus.Errorf("Failed to create mount point: %v", err)
@@ -327,7 +374,7 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 		return nil, fmt.Errorf("failed to unmount after copy: %w", err)
 	}
 
-	// 9. Write the base_lv_id back to the image row
+	// Write the base_lv_id back to the image row
 	if err := storage.UpdateBaseLvID(ctx, app.DB, req.W.Msg.ImageID, baseLvID); err != nil {
 		logrus.Errorf("Failed to update base_lv_id in DB: %v", err)
 		return nil, fmt.Errorf("failed to update base_lv_id in DB: %w", err)
@@ -365,6 +412,9 @@ func ActivateSnapshot(ctx context.Context, req *fsm.Request[FSMRequest, FSMRespo
 		return nil, fmt.Errorf("lock contention for %s", req.Msg.ImageName)
 	}
 	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
 		// Always release lock
 		if err := storage.ReleaseLock(ctx, app.DB, lockKey, lockVal); err != nil {
 			logrus.Warnf("Failed to release lock %s: %v", lockKey, err)
@@ -373,7 +423,7 @@ func ActivateSnapshot(ctx context.Context, req *fsm.Request[FSMRequest, FSMRespo
 		}
 	}()
 
-	// 1. Lookup image row to get base_lv_id
+	// Lookup image row to get base_lv_id
 	logrus.Infof("Looking up image %d in DB...", req.W.Msg.ImageID)
 	img, err := storage.GetImageByID(ctx, app.DB, req.W.Msg.ImageID)
 	if err != nil {
@@ -387,7 +437,7 @@ func ActivateSnapshot(ctx context.Context, req *fsm.Request[FSMRequest, FSMRespo
 	baseLvID := img.BaseLvID.Int64
 	logrus.Infof("Found base_lv_id=%d for image %d", baseLvID, req.W.Msg.ImageID)
 
-	// 2. Generate snapshot ID (random, validated against DB)
+	// Generate snapshot ID (random, validated against DB)
 	rand.Seed(time.Now().UnixNano())
 	var snapLvID int64
 	for {
@@ -405,7 +455,7 @@ func ActivateSnapshot(ctx context.Context, req *fsm.Request[FSMRequest, FSMRespo
 		logrus.Warnf("snap_lv_id=%d already exists in DB, retrying...", snapLvID)
 	}
 
-	// 3. Create snapshot volume via dmsetup
+	// Create snapshot volume via dmsetup
 	logrus.Infof("Creating snapshot in thinpool: base_lv_id=%d snap_lv_id=%d", baseLvID, snapLvID)
 	if err := exec.Command("dmsetup", "message", poolDevice, "0",
 		fmt.Sprintf("create_snap %d %d", snapLvID, baseLvID)).Run(); err != nil {
@@ -424,7 +474,7 @@ func ActivateSnapshot(ctx context.Context, req *fsm.Request[FSMRequest, FSMRespo
 		return nil, fmt.Errorf("failed to map snapshot device: %w", err)
 	}
 
-	// 4. Mount snapshot
+	// Mount snapshot
 	mountPath := fmt.Sprintf("/mnt/images/%d", snapLvID)
 	logrus.Infof("Creating mount point %s", mountPath)
 	if err := os.MkdirAll(mountPath, 0755); err != nil {
@@ -437,7 +487,7 @@ func ActivateSnapshot(ctx context.Context, req *fsm.Request[FSMRequest, FSMRespo
 		return nil, fmt.Errorf("failed to mount snapshot: %w", err)
 	}
 
-	// 5. Insert into activations table
+	// Insert into activations table
 	logrus.Infof("Inserting activation row: image_id=%d snap_lv_id=%d mount_path=%s",
 		req.W.Msg.ImageID, snapLvID, mountPath)
 	actID, err := storage.InsertActivation(ctx, app.DB, req.W.Msg.ImageID, snapLvID, mountPath)

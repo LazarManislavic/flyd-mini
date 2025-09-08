@@ -31,9 +31,16 @@ func main() {
 	log := logrus.New()
 	log.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 
+	// Initialize domain database
+	db, err := storage.InitDB(Schema, DBPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize domain database: %v", err)
+	}
+	defer db.Close()
+
 	// Initialize FSM manager
 	manager, err := fsm.New(fsm.Config{
-		Logger: log,                           // FSM transition/error logs
+		Logger: log,
 		DBPath: "./db",                        // FSM persistence
 		Queues: map[string]int{"default": 10}, // concurrency control
 	})
@@ -42,12 +49,6 @@ func main() {
 	}
 	log.Info("FSM manager initialized")
 
-	// Initialize domain database
-	db, err := storage.InitDB(Schema, DBPath)
-	if err != nil {
-		log.Fatalf("Failed to initialize domain database: %v", err)
-	}
-	defer db.Close()
 	log.Infof("Domain database initialized at %s", DBPath)
 
 	// Initialize S3 client

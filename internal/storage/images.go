@@ -10,20 +10,22 @@ import (
 type Image struct {
 	ID        int64
 	Name      string
-	Digest    sql.NullString
+	Digest    string
 	BaseLvID  sql.NullInt64
 	SizeBytes sql.NullInt64
-	LocalPath string
+	LocalPath sql.NullString
+	Complete  bool
 	CreatedAt string
 }
 
+// InsertImage inserts or updates an image row and returns its ID.
 func InsertImage(ctx context.Context, db *sql.DB, name string, digest string, baseLvID *int64, sizeBytes int64, localPath string) (int64, error) {
 	var id int64
 
 	// Upsert with RETURNING to get the actual row ID
 	err := db.QueryRowContext(ctx, `
-        INSERT INTO images (name, digest, base_lv_id, size_bytes, local_path, created_at)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO images (name, digest, base_lv_id, size_bytes, local_path, complete, created_at)
+        VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
         ON CONFLICT(digest) DO UPDATE SET
             name=excluded.name,
             size_bytes=excluded.size_bytes,
@@ -37,13 +39,18 @@ func InsertImage(ctx context.Context, db *sql.DB, name string, digest string, ba
 	return id, nil
 }
 
-func GetImageByKey(ctx context.Context, db *sql.DB, s3Key string) (*Image, error) {
+// GetImageByName retrieves an image row by its name.
+func GetImageByName(ctx context.Context, db *sql.DB, name string) (*Image, error) {
 	row := db.QueryRowContext(ctx,
-		`SELECT id, name, digest, base_lv_id, size_bytes, local_path, created_at FROM images WHERE s3_key = ?`, s3Key,
+		`SELECT id, name, digest, base_lv_id, size_bytes, local_path, complete, created_at 
+         FROM images WHERE name = ?`, name,
 	)
 
 	var img Image
-	if err := row.Scan(&img.ID, &img.Name, &img.Digest, &img.BaseLvID, &img.SizeBytes, &img.LocalPath, &img.CreatedAt); err != nil {
+	if err := row.Scan(&img.ID, &img.Name, &img.Digest, &img.BaseLvID, &img.SizeBytes, &img.LocalPath, &img.Complete, &img.CreatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -51,16 +58,15 @@ func GetImageByKey(ctx context.Context, db *sql.DB, s3Key string) (*Image, error
 }
 
 // GetImageByID retrieves an image row by its ID.
-// Returns nil if no image exists with the given ID.
 func GetImageByID(ctx context.Context, db *sql.DB, imageID int64) (*Image, error) {
 	row := db.QueryRowContext(ctx,
-		`SELECT id, name, digest, base_lv_id, size_bytes, local_path, created_at
+		`SELECT id, name, digest, base_lv_id, size_bytes, local_path, complete, created_at
 		 FROM images
 		 WHERE id = ?`, imageID,
 	)
 
 	var img Image
-	err := row.Scan(&img.ID, &img.Name, &img.Digest, &img.BaseLvID, &img.SizeBytes, &img.LocalPath, &img.CreatedAt)
+	err := row.Scan(&img.ID, &img.Name, &img.Digest, &img.BaseLvID, &img.SizeBytes, &img.LocalPath, &img.Complete, &img.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // no image found
@@ -73,16 +79,15 @@ func GetImageByID(ctx context.Context, db *sql.DB, imageID int64) (*Image, error
 }
 
 // GetImageByBaseLvID returns an image row matching the given base_lv_id.
-// Returns nil if no image exists with that base_lv_id.
 func GetImageByBaseLvID(ctx context.Context, db *sql.DB, baseLvID int64) (*Image, error) {
 	row := db.QueryRowContext(ctx,
-		`SELECT id, name, digest, base_lv_id, size_bytes, local_path, created_at
+		`SELECT id, name, digest, base_lv_id, size_bytes, local_path, complete, created_at
 		 FROM images
 		 WHERE base_lv_id = ?`, baseLvID,
 	)
 
 	var img Image
-	err := row.Scan(&img.ID, &img.Name, &img.Digest, &img.BaseLvID, &img.SizeBytes, &img.LocalPath, &img.CreatedAt)
+	err := row.Scan(&img.ID, &img.Name, &img.Digest, &img.BaseLvID, &img.SizeBytes, &img.LocalPath, &img.Complete, &img.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // no existing image with this base_lv_id

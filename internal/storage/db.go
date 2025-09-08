@@ -12,12 +12,13 @@ import (
 )
 
 func InitDB(schemaPath, dbPath string) (*sql.DB, error) {
-	// 1. Create parent directory if it doesn't exist
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
-		return nil, fmt.Errorf("failed to create db directory: %w", err)
+	// Ensure parent directory exists
+	parentDir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create db directory %s: %w", parentDir, err)
 	}
 
-	// 2. Check if DB file already exists
+	// Check if DB file already exists
 	if _, err := os.Stat(dbPath); err == nil {
 		logrus.Infof("Database already exists at %s", dbPath)
 
@@ -28,26 +29,38 @@ func InitDB(schemaPath, dbPath string) (*sql.DB, error) {
 		}
 		return db, nil
 	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("failed to stat db file: %w", err)
+		// If error is not "file not exists", surface it
+		return nil, fmt.Errorf("failed to stat db file %s: %w", dbPath, err)
 	}
 
-	// 3. Read schema file
+	// Read schema file
 	schemaBytes, err := os.ReadFile(schemaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read schema file: %w", err)
 	}
 
-	// 4. Open new SQLite connection
+	// Open new SQLite connection
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open db: %w", err)
 	}
 
-	// 5. Apply schema
+	// Apply schema
 	if _, err := db.Exec(string(schemaBytes)); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to apply schema: %w", err)
 	}
 
+	logrus.Infof("Initialized new database at %s", dbPath)
 	return db, nil
+}
+
+// EnsureDir ensures that a given directory path exists.
+func EnsureDir(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(path, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", path, err)
+		}
+	}
+	return nil
 }
