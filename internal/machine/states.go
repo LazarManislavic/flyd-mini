@@ -299,3 +299,74 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 		},
 	}, nil
 }
+
+// ActivateSnapshot:
+//   - Creates a snapshot of the base LV for the given image
+//   - Mounts it under /mnt/images/<activation_id>
+//   - Inserts a row into the activations table
+func ActivateSnapshot(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse], app *AppContext) (*fsm.Response[FSMResponse], error) {
+	const poolDevice = "/dev/mapper/pool"
+
+	// 1. Lookup image row to get base_lv_id
+	img, err := storage.GetImageByID(ctx, app.DB, req.W.Msg.ImageID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup image: %w", err)
+	}
+	if img == nil || !img.BaseLvID.Valid {
+		return nil, fmt.Errorf("image %d has no base_lv_id", req.W.Msg.ImageID)
+	}
+	baseLvID := img.BaseLvID.Int64
+
+	// 2. Generate snapshot ID (random, validated against DB)
+	rand.Seed(time.Now().UnixNano())
+	var snapLvID int64
+	for {
+		snapLvID = int64(rand.Intn(1_000_000) + 1)
+		existing, err := storage.GetActivationBySnapLvID(ctx, app.DB, snapLvID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check snap_lv_id in DB: %w", err)
+		}
+		if existing == nil {
+			break
+		}
+	}
+
+	// 3. Create snapshot volume via dmsetup
+	if err := exec.Command("dmsetup", "message", poolDevice, "0", fmt.Sprintf("create_snap %d %d", snapLvID, baseLvID)).Run(); err != nil {
+		return nil, fmt.Errorf("failed to create snapshot: %w", err)
+	}
+
+	snapName := fmt.Sprintf("snap_lv_%d", snapLvID)
+	snapDevice := fmt.Sprintf("/dev/mapper/%s", snapName)
+
+	if err := exec.Command("dmsetup", "create", snapName,
+		"--table", fmt.Sprintf("0 4194304 thin %s %d", poolDevice, snapLvID),
+	).Run(); err != nil {
+		return nil, fmt.Errorf("failed to map snapshot device: %w", err)
+	}
+
+	// 4. Mount snapshot
+	mountPath := fmt.Sprintf("/mnt/images/%d", snapLvID)
+	if err := os.MkdirAll(mountPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create mount point: %w", err)
+	}
+	if err := exec.Command("mount", snapDevice, mountPath).Run(); err != nil {
+		return nil, fmt.Errorf("failed to mount snapshot: %w", err)
+	}
+
+	// 5. Insert into activations table
+	actID, err := storage.InsertActivation(ctx, app.DB, req.W.Msg.ImageID, snapLvID, mountPath)
+	if err != nil {
+		_ = exec.Command("umount", mountPath).Run()
+		return nil, fmt.Errorf("failed to insert activation row: %w", err)
+	}
+
+	return &fsm.Response[FSMResponse]{
+		Msg: &FSMResponse{
+			BaseDir:   mountPath,
+			ImageID:   req.W.Msg.ImageID,
+			LocalPath: snapDevice,
+			SnapshotRef: actID,
+		},
+	}, nil
+}

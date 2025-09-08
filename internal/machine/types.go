@@ -10,5 +10,5 @@ type FSMResponse struct {
 	LocalPath   string // where the tarball was downloaded
 	BaseDir     string // directory where it was unpacked
 	ImageID     int64  // row ID in the images table
-	SnapshotRef string // identifier/handle for activated snapshot
+	SnapshotRef int64 // identifier/handle for activated snapshot
 }
