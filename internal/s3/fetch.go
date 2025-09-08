@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"strings"
+	
+	"github.com/sirupsen/logrus"
 )
 
 // --- XML structures for S3 bucket listings ---
@@ -49,6 +51,7 @@ func Fetch(ctx context.Context, client *S3Client, key, destPath string) error {
 		return fmt.Errorf("failed to stat %s: %w", destPath, err)
 	}
 
+	logrus.Infof("Fetching %s to %s", key, destPath)
 	// File does not exist → download from S3
 	stream, err := client.GetObjectStream(ctx, key)
 	if err != nil {
@@ -94,7 +97,7 @@ func FetchImageLayers(ctx context.Context, client *S3Client, family string, list
 		// mark this ETag as seen
 		seenETags[obj.ETag] = true
 
-		pathWithEtag := []string{destPath, obj.ETag}
+		pathWithEtag := []string{destPath, strings.ReplaceAll(obj.ETag, "\"", "")}
 		pulled = append(pulled, pathWithEtag)
 	}
 
