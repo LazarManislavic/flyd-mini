@@ -18,7 +18,7 @@ type Blob struct {
 	CreatedAt string
 }
 
-// InsertBlob inserts or updates a blob record by digest.
+// InsertBlob inserts or updates a blob record by digest or etag.
 func InsertBlob(ctx context.Context, db *sql.DB, digest string, sizeBytes int64, localPath string, etag string, complete bool) error {
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO blobs (digest, local_path, size_bytes, etag, complete)
@@ -28,9 +28,15 @@ func InsertBlob(ctx context.Context, db *sql.DB, digest string, sizeBytes int64,
 			size_bytes = excluded.size_bytes,
 			etag       = excluded.etag,
 			complete   = excluded.complete
+		ON CONFLICT(etag) DO UPDATE SET
+			digest     = excluded.digest,
+			local_path = excluded.local_path,
+			size_bytes = excluded.size_bytes,
+			complete   = excluded.complete
 	`, digest, localPath, sizeBytes, etag, complete)
 	return err
 }
+
 
 // GetBlobByETag retrieves a blob by its ETag.
 // Returns nil if no blob is found.

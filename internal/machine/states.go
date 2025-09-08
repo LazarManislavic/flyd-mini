@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -49,7 +50,7 @@ func FetchObject(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse],
 		return nil, fmt.Errorf("lock contention for %s", req.Msg.ImageName)
 	}
 	defer func() {
-		// A different context to release lock because the global context is usually 
+		// A different context to release lock because the global context is usually
 		// canclled during shutdown before some locks are released.
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -508,5 +509,30 @@ func ActivateSnapshot(ctx context.Context, req *fsm.Request[FSMRequest, FSMRespo
 			LocalPath:   snapDevice,
 			SnapshotRef: actID,
 		},
+	}, nil
+}
+
+// WriteResults writes the FSMResponse into results.json
+func WriteResults(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse], app *AppContext) (*fsm.Response[FSMResponse], error) {
+	outputFile := "results.json"
+
+	// Marshal FSMResponse into JSON
+	data, err := json.MarshalIndent(req.W.Msg, "", "  ")
+	if err != nil {
+		logrus.Errorf("Failed to marshal FSMResponse: %v", err)
+		return nil, fmt.Errorf("failed to marshal FSMResponse: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(outputFile, data, 0644); err != nil {
+		logrus.Errorf("Failed to write results.json: %v", err)
+		return nil, fmt.Errorf("failed to write results.json: %w", err)
+	}
+
+	logrus.Infof("FSMResponse successfully written to %s", outputFile)
+
+	// Nothing new to return, just forward the same message
+	return &fsm.Response[FSMResponse]{
+		Msg: req.W.Msg,
 	}, nil
 }

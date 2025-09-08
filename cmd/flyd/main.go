@@ -69,8 +69,9 @@ func main() {
 	builder := fsm.Register[machine.FSMRequest, machine.FSMResponse](manager, "tasks").
 		Start("FetchObject", machine.WithApp(appCtx, machine.FetchObject)).
 		To("UnpackLayers", machine.WithApp(appCtx, machine.UnpackLayers)).
-		To("RegisterImage", machine.WithApp(appCtx, machine.RegisterImage)).
-		To("ActivateSnapshot", machine.WithApp(appCtx, machine.ActivateSnapshot)).
+		// To("RegisterImage", machine.WithApp(appCtx, machine.RegisterImage)).
+		// To("ActivateSnapshot", machine.WithApp(appCtx, machine.ActivateSnapshot)).
+		To("WriteResults", machine.WithApp(appCtx, machine.WriteResults)).
 		End("done")
 
 	startFn, resumeFn, err := builder.Build(ctx)

@@ -1,0 +1,6 @@
+{
+  "LocalPath": "blobs/",
+  "BaseDir": "rootfs/",
+  "ImageID": 1,
+  "SnapshotRef": 0
+}
