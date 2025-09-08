@@ -64,9 +64,10 @@ func main() {
 	logrus.Info("AppContext initialized")
 
 	builder := fsm.Register[machine.FSMRequest, machine.FSMResponse](manager, "tasks").
-		Start("fetch", machine.WithApp(appCtx, machine.FetchObject)).
-		To("unpack", machine.WithApp(appCtx, machine.UnpackLayers)).
-		To("register", machine.WithApp(appCtx, machine.RegisterImage)).
+		Start("FetchObject", machine.WithApp(appCtx, machine.FetchObject)).
+		To("UnpackLayers", machine.WithApp(appCtx, machine.UnpackLayers)).
+		To("RegisterImage", machine.WithApp(appCtx, machine.RegisterImage)).
+		To("ActivateSnapshot", machine.WithApp(appCtx, machine.ActivateSnapshot)).
 		End("done")
 
 	// Transitions
