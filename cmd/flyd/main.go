@@ -1,14 +1,13 @@
 package main
 
-// CLI entrypoint
-
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/superfly/fsm"
 
@@ -17,52 +16,55 @@ import (
 	"github.com/manuelinfosec/flyd/internal/storage"
 )
 
-const AWS_BUCKET_NAME = "flyio-platform-hiring-challenge"
-const AWS_REGION = "us-east-1"
+const (
+	AWSBucket = "flyio-platform-hiring-challenge"
+	AWSRegion = "us-east-1"
+	DBPath    = "db/flyd.db"
+	Schema    = "internal/storage/schema.sql"
+)
 
 func main() {
-	// Root context with cancellation on interrupt (shared by FSM and S3)
+	// Setup root context with cancel on interrupt
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	manager, err := fsm.New(
-		fsm.Config{
-			Logger: logrus.New(),                  // logging transitions/errors
-			DBPath: "./db",                        // internal persistence
-			Queues: map[string]int{"default": 10}, // concurrency control
-		},
-	)
+	log := logrus.New()
+	log.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+
+	// Initialize FSM manager
+	manager, err := fsm.New(fsm.Config{
+		Logger: log,                           // FSM transition/error logs
+		DBPath: "./db",                        // FSM persistence
+		Queues: map[string]int{"default": 10}, // concurrency control
+	})
 	if err != nil {
-		logrus.Fatalf("fatal error: %v", err)
+		log.Fatalf("Failed to initialize FSM manager: %v", err)
 	}
+	log.Info("FSM manager initialized")
 
-	logrus.Info("Internal database intiailzed")
-
-	// Initialize domain database with schema
-	db, err := storage.InitDB("internal/storage/schema.sql", "db/flyd.db")
+	// Initialize domain database
+	db, err := storage.InitDB(Schema, DBPath)
 	if err != nil {
-		logrus.Fatalf("fatal error: %v", err)
+		log.Fatalf("Failed to initialize domain database: %v", err)
 	}
 	defer db.Close()
+	log.Infof("Domain database initialized at %s", DBPath)
 
-	logrus.Info("Domain database initialized")
-
-	// Initialize (Anonymous) S3 client
-	s3Client, err := s3.NewS3Client(ctx, AWS_BUCKET_NAME, AWS_REGION)
+	// Initialize S3 client
+	s3Client, err := s3.NewS3Client(ctx, AWSBucket, AWSRegion)
 	if err != nil {
-		logrus.Fatalf("fatal error: %v", err)
+		log.Fatalf("Failed to initialize S3 client: %v", err)
 	}
-
-	logrus.Info("S3 Client intitialized")
+	log.Infof("S3 client initialized for bucket=%s, region=%s", AWSBucket, AWSRegion)
 
 	// Build shared app context
 	appCtx := &machine.AppContext{
 		DB: db,
 		S3: s3Client,
 	}
+	log.Info("AppContext initialized")
 
-	logrus.Info("AppContext initialized")
-
+	// FSM workflow
 	builder := fsm.Register[machine.FSMRequest, machine.FSMResponse](manager, "tasks").
 		Start("FetchObject", machine.WithApp(appCtx, machine.FetchObject)).
 		To("UnpackLayers", machine.WithApp(appCtx, machine.UnpackLayers)).
@@ -70,31 +72,48 @@ func main() {
 		To("ActivateSnapshot", machine.WithApp(appCtx, machine.ActivateSnapshot)).
 		End("done")
 
-	// Transitions
-	startFn, _, err := builder.Build(ctx)
+	startFn, resumeFn, err := builder.Build(ctx)
 	if err != nil {
-		logrus.Fatalf("fatal error: %v", err)
+		logrus.Fatalf("Failed to build FSM: %v", err)
 	}
 
+	activeRuns, err := manager.Active(ctx, "tasks")
+	if err == nil {
+		for runType, runVersion := range activeRuns {
+			logrus.Infof("Active run found: type=%s version=%s", runType, runVersion.String())
+		}
+	}
+
+	// Resume unfinished runs
+	logrus.Info("Resuming any unfinished runs…")
+	if err := resumeFn(ctx); err != nil {
+		logrus.Errorf("Failed to resume runs: %v", err)
+	}
+
+	// Start a new run with random UUID
+	runID := uuid.New().String()
 	req := fsm.NewRequest(
 		&machine.FSMRequest{
-			ImageName:  "golang", // logical blob family
-			BucketName: AWS_BUCKET_NAME,
+			ImageName:  "golang",
+			BucketName: AWSBucket,
 		},
 		&machine.FSMResponse{},
 	)
 
-	runID, err := startFn(ctx, "unique-run-4", req)
+	version, err := startFn(ctx, runID, req)
 	if err != nil {
-		logrus.Fatalf("fatal error: %v", err)
+		logrus.Fatalf("FSM start failed: %v", err)
+	}
+	logrus.Infof("FSM started with runID=%s version=%s", runID, version)
+
+	// Wait until the run finishes
+	if err := manager.WaitByID(ctx, runID); err != nil {
+		logrus.Errorf("FSM run %s failed: %v", runID, err)
+	} else {
+		logrus.Infof("FSM run %s completed successfully", runID)
 	}
 
-	fmt.Println(runID)
-
-	// logrus.Info("flyd closing...")
-	// os.Exit(0)
-
-	// Block until signal
-	<-ctx.Done()
-	logrus.Info("shutting down gracefully…")
+	// Graceful shutdown
+	logrus.Info("Shutting down flyd gracefully…")
+	manager.Shutdown(10 * time.Second)
 }
