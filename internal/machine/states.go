@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manuelinfosec/flyd/internal"
 	"github.com/manuelinfosec/flyd/internal/s3"
 	"github.com/manuelinfosec/flyd/internal/storage"
+	internal "github.com/manuelinfosec/flyd/internal/util"
 	"github.com/sirupsen/logrus"
 	"github.com/superfly/fsm"
 )
@@ -29,6 +29,28 @@ import (
 func FetchObject(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse], app *AppContext) (*fsm.Response[FSMResponse], error) {
 	destDir := "blobs"
 	logrus.Infof("Starting FetchObject for image family: %s", req.Msg.ImageName)
+
+	// lock mechanism to avoid two processes trying to fetch/write the same image simultaneously.
+	lockKey := fmt.Sprintf("fetch:%s", req.Msg.ImageName)
+	lockVal := fmt.Sprintf("pid-%d", os.Getpid())
+
+	locked, err := storage.AcquireLock(ctx, app.DB, lockKey, lockVal, 30*time.Second)
+	if err != nil {
+		logrus.Errorf("Error while trying to acquire lock for %s: %v", req.Msg.ImageName, err)
+		return nil, err
+	}
+	if !locked {
+		logrus.Warnf("Could not acquire lock for image %s, skipping fetch", req.Msg.ImageName)
+		return nil, fmt.Errorf("lock contention for %s", req.Msg.ImageName)
+	}
+	defer func() {
+		// Always release lock
+		if err := storage.ReleaseLock(ctx, app.DB, lockKey, lockVal); err != nil {
+			logrus.Warnf("Failed to release lock %s: %v", lockKey, err)
+		} else {
+			logrus.Infof("Released lock %s", lockKey)
+		}
+	}()
 
 	// Step 1: Get XML listing
 	url := fmt.Sprintf("https://%s.s3.us-east-1.amazonaws.com/", req.Msg.BucketName)
@@ -157,6 +179,27 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 	)
 
 	logrus.Infof("Starting RegisterImage for ImageID %d", req.W.Msg.ImageID)
+
+	lockKey := fmt.Sprintf("register:%s", req.Msg.ImageName)
+	lockVal := fmt.Sprintf("pid-%d", os.Getpid())
+
+	locked, err := storage.AcquireLock(ctx, app.DB, lockKey, lockVal, 30*time.Second)
+	if err != nil {
+		logrus.Errorf("Error while trying to acquire lock for %s: %v", req.Msg.ImageName, err)
+		return nil, err
+	}
+	if !locked {
+		logrus.Warnf("Could not acquire lock for image %s, skipping fetch", req.Msg.ImageName)
+		return nil, fmt.Errorf("lock contention for %s", req.Msg.ImageName)
+	}
+	defer func() {
+		// Always release lock
+		if err := storage.ReleaseLock(ctx, app.DB, lockKey, lockVal); err != nil {
+			logrus.Warnf("Failed to release lock %s: %v", lockKey, err)
+		} else {
+			logrus.Infof("Released lock %s", lockKey)
+		}
+	}()
 
 	// 1. Check if image already has a base_lv_id
 	existingImage, err := storage.GetImageByID(ctx, app.DB, req.W.Msg.ImageID)
@@ -307,7 +350,28 @@ func RegisterImage(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse
 func ActivateSnapshot(ctx context.Context, req *fsm.Request[FSMRequest, FSMResponse], app *AppContext) (*fsm.Response[FSMResponse], error) {
 	const poolDevice = "/dev/mapper/pool"
 
-	logrus.Infof("Starting ActivateSnapshot for image ID %d", req.W.Msg.ImageID)
+	logrus.Infof("Starting ActivateSnapshot for thin device: %s", req.W.Msg.LocalPath)
+
+	lockKey := fmt.Sprintf("activate:%s", req.Msg.ImageName)
+	lockVal := fmt.Sprintf("pid-%d", os.Getpid())
+
+	locked, err := storage.AcquireLock(ctx, app.DB, lockKey, lockVal, 30*time.Second)
+	if err != nil {
+		logrus.Errorf("Error while trying to acquire lock for %s: %v", req.Msg.ImageName, err)
+		return nil, err
+	}
+	if !locked {
+		logrus.Warnf("Could not acquire lock for image %s, skipping fetch", req.Msg.ImageName)
+		return nil, fmt.Errorf("lock contention for %s", req.Msg.ImageName)
+	}
+	defer func() {
+		// Always release lock
+		if err := storage.ReleaseLock(ctx, app.DB, lockKey, lockVal); err != nil {
+			logrus.Warnf("Failed to release lock %s: %v", lockKey, err)
+		} else {
+			logrus.Infof("Released lock %s", lockKey)
+		}
+	}()
 
 	// 1. Lookup image row to get base_lv_id
 	logrus.Infof("Looking up image %d in DB...", req.W.Msg.ImageID)
