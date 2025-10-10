@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html>
+<head id="head">
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet"
+		integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Eliko D.O.O</title>
+
+
+
+	<style type="text/css">
+		.progress {
+  		position: relative;
+  		width: 210px;
+  		height: 30px;
+  		background: #9cbab4;
+ 		 border-radius: 5px;
+		  overflow: hidden;
+		}
+		.DUGME2{
+			background-color: whitesmoke;
+			color: darkblue;
+			border-radius: 5px;
+			background-image: url("lobanja.png");
+			width: 5000px;
+			height: 5000px;
+			align-content: center;
+
+
+		}
+
+		.progress__fill {
+		  width: 0%;
+		  height: 100%;
+		  background: #009579;
+		  transition: all 0.2s;
+		}
+
+		.progress__text {
+ 		 position: absolute;
+ 		 top: 50%;
+ 		 right: 5px;
+ 		 transform: translateY(-50%);
+ 		 font: bold 14px "Quicksand", sans-serif;
+ 		 color: #ffffff;
+		}
+
+		.col-md-2{
+			margin:0px 10px 0px 10px;
+
+		}
+		.sticky{
+			position: sticky;
+			top: 0;
+			z-index: 10;
+		}
+
+		.row1{
+			margin-top: 20px;
+		}
+		.Pozovite-bar{
+			background: linear-gradient(to right, #339933 0%, #ffff99 100%);
+			position: sticky;
+			top: 0;
+
+
+		}
+			.content{
+
+				background-image: linear-gradient(to right bottom, #339933, #62ac41, #89bf52, #add265, #d1e57a, #e1ed8d, #f1f6a0, #ffffb3, #ffffc6, #ffffd8, #ffffeb, #fffffd);
+			}
+			
+			.slike{
+				width:100%;
+				
+				
+				display: inline-block;
+				position: relative;
+			}
+			.text{
+				text-align: center;
+				font-size: x-large;
+
+
+			}
+			.Razmotac{
+				margin-left: 20%;
+
+
+			}
+			.dno{
+				background: linear-gradient(to bottom right, #000000 0%, #fffffd 100%);
+				height: 200px;
+
+			}
+			.br{
+				display: inline-block;
+				text-align: left;
+			}
+			.dnotext{
+				font-weight: bold;
+				font-size: x-large;
+			}
+			.TEXTGORE{
+				font-size: x-large;
+				text-align: right;
+
+			}
+			.ne{
+				margin: 0px,0px,0px,0px;
+
+			}
+			.pad{
+
+				
+				padding-left: 0px;
+				padding-right: 0px;
+				margin-left: 0px;
+				margin-right: 0px;
+			}
+			.eliko{
+				
+				display: inline-block;
+
+			}
+			.doo{
+				
+				display: inline-block;
+			}
+			.gore{
+				margin-left:-5%;
+
+
+			}
+			.Pozdrav{
+				margin-left:45%;
+				margin-right:45%;
+			}
+			.fensi{
+				background:linear-gradient(136deg, rgba(47, 255, 0, 1) 0%, rgba(0, 175, 212, 1) 28%, rgba(39, 46, 176, 1) 57%, rgba(219, 59, 255, 1) 79%, rgba(255, 0, 0, 1) 100%);
+
+			}
+ /* pocetak navbara css*/
+ @import url('https://fonts.googleapis.com/css2?family=Allerta+Stencil&display=swap');
+
+body{
+
+  background-color: #eee;
+}
+
+.navbar-nav>li>a{
+
+  text-transform: uppercase;
+  font-size: 18px;
+  margin-right:20px;
+  color: #fff;
+}
+
+
+.navbar-toggler {
+    padding: .20rem .50rem;
+    font-size: 1.25rem;
+    line-height: 1;
+    background-color: transparent;
+    border: 1px solid white;
+
+    }
+
+    .nav-link{
+
+      color: #fff !important;
+    }
+
+
+.wrapper{
+      width: 100%;
+    position: absolute;
+    height: 100%;
+    background-color:#ffff66;
+    clip-path: polygon(81% 0, 100% 0, 100% 50%, 100% 100%, 71% 100%);
+    transition: 1s all;
+}
+
+.navbar-brand{
+
+  color:#fff;
+  font-family: 'Allerta Stencil', sans-serif;
+  margin-bottom: 4px;
+  font-size: 27px;
+}
+
+.navbar-red:hover .wrapper{
+
+  clip-path: polygon(81% 0, 100% 0, 100% 50%, 100% 100%, 65% 100%);
+
+}
+
+.navbar-brand:hover{
+
+  color:#fff;
+  
+}
+
+.navbar-red{
+
+  background-color: green;
+  color: #fff;
+
+}
+
+.all-show{
+
+  z-index: 10;
+}
+/*kraj nav bara */
+	</style>
+</head>
+
+<body id="body">
+
+	<!-- nav bar-->
+	<nav class="navbar navbar-expand-lg navbar-red navbar-dark">
+        <div class="wrapper">
+          
+        </div>
+  <div class="container-fluid all-show">
+    <a class="navbar-brand" href="#">Eliko D.O.O <i class="fa fa-codepen"></i></a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav mr-auto mb-2 mb-lg-0">
+        <li class="nav-item">
+          <a class="nav-link active" aria-current="page" href="#"></a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="Proizvodi.aspx">Proizvodi</a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link" href="Narudzbine.aspx">Narudzbine</a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link" href="Akcija.aspx">Akcije</a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link" href="Login.aspx">Login</a>
+        </li>
+
+        
+        
+        
+      </ul>
+      
+    </div>
+  </div>
+</nav>
+<!-- kraj nav bara -->
+
+
+	<div id="Bodylazni">
+<div class="content">
+	<div class="row sticky Pozovite-bar  pad">
+			<div class="col-md-4 pad">
+
+				<img src="eliko1.png" class="eliko"  style="text-align:left;">
+				<img src="doo3.png" class="doo"></div>
+			
+		<div class="col-md-6  pad gore">
+			
+			<h3 class="br">Pozovite nas na broj:<p class="tel3 br">+382-69-436-976</p><p class="tel4 br">+382-68-896-118</p></h3>
+		</div>
+		<div class="col-md-2  pad">
+			<p class="TEXTGORE">10 Godina sa vama😁</p>
+			
+
+		</div>
+	</div>
+	
+	<div class="row row1">
+		<div class="col-md-2"></div>
+
+
+		<div class="col-md-2 ">
+			<img src="traka11.png"class="slike"> <p class="text">Pet traka</p>
+			
+
+		</div>
+		<div class="col-md-2 ">
+			<img src="spojnice11.png"class="slike">
+			<p class="text" style="font-size: 20px;">Metalna kopča</p>
+		</div>
+		<div class="col-md-2 ">
+			<img src="stezaljka11.png"class="slike">
+			<p class="text">Natezač</p>
+		</div>
+		<div class="col-md-2">
+			<img src="RAZMOTAC-ERAPACKAGING-112.png"class="slike">
+			<p class="text">Razmotač trake</p>
+
+		</div>
+		<div class="row">
+		<div class="col-md-2"></div>
+	</div>
+		<div class="col-md-3"></div>
+
+		<div class="col-md-2 ">
+		<img src="Screenshot_111.png" class="slike">	
+		<p class="text">P.P.Traka</p> 
+
+		</div>
+		<div class="col-md-2">
+			<img src="ručnaPP11.png"  class="slike Razmotac"  > 
+			<p class="text">Vezacica za pp i pet traku</p>
+
+		</div>
+		<div class="col-md-2">
+			<img src="Untitled-11.png" class="slike">
+			<p class="text" style="text-align: center;">Metalne spojnice</p>
+
+		</div>
+
+		<div class="col-md-3"></div>
+		</div>
+	</div>
+	<div class="row row1 dno">
+		<div class=""></div>
+		
+		<div class="col-md-5"></div>
+		
+		<div class="col-md-5">	<p class="email dnotext">akovicgoran@gmail.com</p>
+		<p class="dnotext tel1">tel:+382-69-436-976</p> 
+		<p class="dnotext tel2">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+382-68-896-118</p></div>
+		
+
+
+
+		
+		<div class="col-md-2"></div>
+
+
+
+
+
+	</div>
+	
+
+</div>
+<div class="fensi">
+	<button class="Pozdrav" id="dugmepocetak">Pozdrav porfesore🙌</button>
+
+
+</div>
+</div>
+</body>
+<script type="text/javascript">
+
+	var sajt;
+	var prvodugme=document.getElementsByClassName("Pozdrav")[0];
+	prvodugme.addEventListener("click",Promeni_Stranicu)
+	function Promeni_Stranicu() {
+		Obrisi_Sve();
+
+		
+	}
+	function Obrisi_Sve_I_Samo_To(){   
+		const e=document.getElementById("body");
+		var child = e.lastElementChild; 
+		while (child) {
+            e.removeChild(child);
+            child = e.lastElementChild;
+	}
+}
+	function Obrisi_Sve(){    
+		var bodylazni=document.getElementById("Bodylazni");
+		sajt=bodylazni;
+		bodylazni.parentElement.removeChild(bodylazni);
+		setTimeout(PitanjeBr1,1000);
+		
+		
+	}
+
+	function dodaj_body(){
+		const body=document.getElementById("body");
+
+		const el = document.createElement('div');
+		el.setAttribute('class', 'progress');
+		body.appendChild(el);
+		const el1 = document.createElement('div');
+		el1.setAttribute('class', 'progress__fill');
+		el.appendChild(el1);
+		const el2 = document.createElement('span');
+		el2.setAttribute('class', 'progress__text');
+		el2.textContent = '0%';
+		el.appendChild(el2);
+		}
+		function PitanjeBr1() {
+			
+		
+		let razlog=prompt("Zasto ste mi obrisali ceo projekat???","Upisi razlog!!!")
+		console.log(razlog);
+		Provera_Razloga(razlog);
+
+
+	}
+
+	function Provera_Razloga(razlog){
+		if(razlog=="sta ja imam sa tim"||razlog=="bas me briga"||
+			razlog=="kidi je legenda"||razlog=="moze mi se")
+		{
+			const body=document.getElementById("body");
+			body.appendChild(sajt);
+		}else{
+			dodaj_body();
+			
+			loading();
+			setTimeout(PromeniIzgledUVirsTemu,5000);
+				
+		}
+	}	
+
+
+		
+		
+
+	
+			function updateProgressBar(value) {
+  				value = Math.round(value);
+ 				var progressBar=document.getElementsByClassName("progress__fill")[0].style.width = `${value}%`;
+  				var progressBar=document.getElementsByClassName("progress__text")[0].textContent = `${value}%`;
+				}
+			
+			
+			function loading() {
+				var i;
+				var timeleft = 0;
+				var downloadTimer = setInterval(function(){
+  				if(timeleft >= 100){
+   				 clearInterval(downloadTimer);
+  				}
+  				i = timeleft;
+  				timeleft += 1;
+  				updateProgressBar(i);
+				}, 50);
+				
+				
+				
+			}
+			function promeniBojuUCrvenu(elem){
+				elem.style.backgroundColor="red";
+			}
+			function promeniBojuUCrvenu2(elem){
+				elem.style.backgroundColor="darkred";
+			}
+			function PromeniIzgledUVirsTemu(){
+				window.alert("Pokrecem instalaciju:  Mydoom.pif 😋😁 ");
+					setTimeout(alertusp,100)
+					const head=document.getElementById("head");
+					const el4=document.createElement('link');
+					el4.setAttribute('rel', 'icon');
+					el4.setAttribute('type', 'image/x-icon');
+					el4.setAttribute('href', 'virus.ico');
+					head.appendChild(el4);
+					document.title="VIRUS OPASNOST!!!";
+					var pr=document.getElementsByClassName("progress")[0];
+					promeniBojuUCrvenu(pr);
+					var pr1=document.getElementsByClassName("progress__fill")[0];
+					promeniBojuUCrvenu2(pr1);
+					setInterval(promeniBODYuCrvenu,100);
+					setInterval(promeniBODYuPlavu,112);
+					setInterval(promeniBODYuCrnu,250);
+					const el5=document.createElement('buttton');
+					const body=document.getElementById("body");
+					el5.setAttribute('class','DUGME2');
+					el5.textContent = 'Uninstal Mydoom.pif?!';
+
+					body.appendChild(el5);
+					var dugme2=document.getElementsByClassName('DUGME2')[0];
+					dugme2.addEventListener("click",alert1)
+
+
+			}
+			function alertusp() {
+				alert("Uspesno instalirano X X X ");
+			}
+			function alert1() {
+				if(window.confirm("Da li ste uporni?")==true)
+					{
+						alert2();
+					}
+			}
+			function alert2() {
+				if(window.confirm("Zelite li da se vratite na ???")==true)
+					{
+						alert3();
+					}
+			}
+			function alert3() {
+				if(window.confirm("Ali vi ste ga izbrisali????")==true)
+					{
+						
+						alert4();
+					}
+			else{
+				window.alert("LAŽ");
+				alert2();	
+			}
+		}
+			function alert4() {
+				if(window.confirm("Da li zelite opet ga da obrisete???")==true)
+					{
+						Obrisi_Sve_I_Samo_To();
+						alert5();
+					}
+			else{
+				Obrisi_Sve_I_Samo_To();
+				body.appendChild(sajt);
+				window.alert("Uspesno ste se vratili na sajt :), svaka cast🤷‍")	
+			}
+		}
+			function alert5() {
+				if(window.confirm("Da li ste zadovoljni ovim sto ste uradili?🙄😣")==true)
+					{
+						alert2();
+					}
+			else{
+				Obrisi_Sve_I_Samo_To();
+				body.appendChild(sajt);
+				
+			}
+			}
+			function promeniBODYuCrvenu() {
+				const body=document.getElementById("body");
+				body.style.backgroundColor="red";
+				
+			}
+			function promeniBODYuPlavu() {
+				const body=document.getElementById("body");
+				body.style.backgroundColor="#680000";
+				
+			}
+			function promeniBODYuCrnu() {
+				const body=document.getElementById("body");
+				body.style.backgroundColor="#1a1a1a";
+				
+			}
+
+			
+
+	
+	
+	var broj1 = document.getElementsByClassName('tel1')[0];
+	broj1.addEventListener("click", call);
+	function call() {
+		window.open('tel:+38269-43-69-76');	
+	
+	}
+
+	var broj2 = document.getElementsByClassName('tel2')[0];
+	broj2.addEventListener("click", call1);
+	function call1() {
+		window.open('tel:+38268-89-61-18');	
+	}
+
+	var broj3 = document.getElementsByClassName('tel3')[0];
+	broj3.addEventListener("click", call);
+	
+		var broj4 = document.getElementsByClassName('tel4')[0];
+	broj4.addEventListener("click", call1);
+	
+
+	
+	
+
+
+document.getElementsByClassName('email')[0].addEventListener("click",redirect)
+function redirect() {
+
+      var email = "akovicgoran@gmail.com";
+      var mailto_link = 'mailto:' + email;
+      window.open(mailto_link, 'emailWindow')
+}
+
+
+
+
+
+</script>
+</html>
